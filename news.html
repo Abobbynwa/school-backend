@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Acme Academy – News &amp; Events</title>
+  <link rel="stylesheet" href="css/styles.css"/>
+</head>
+<body>
+  <!-- Overlay Nav + Mini Header (same as admissions) -->
+  <div id="overlayNav" class="overlay-nav">
+    <button id="closeNav" class="overlay-close">&times;</button>
+    <nav class="overlay-menu">
+      <a href="index.html">Home</a>
+      <a href="about.html">About</a>
+      <a href="academics.html">Academics</a>
+      <a href="admissions.html">Admissions</a>
+      <a href="news.html" class="active">News</a>
+      <a href="contact.html">Contact</a>
+    </nav>
+  </div>
+  <header class="mini-header">
+    <div class="container nav-container">
+      <a href="index.html" class="logo">Acme Academy</a>
+      <button id="openNav" class="overlay-open">&#9776;</button>
+    </div>
+  </header>
+
+  <!-- Create News Form -->
+  <section class="section reveal" id="news-create">
+    <div class="container">
+      <h2>Post a News Item</h2>
+      <form id="newsForm">
+        <input type="text" name="title" placeholder="Title" required/>
+        <textarea name="content" placeholder="Content" rows="4" required></textarea>
+        <input type="url" name="image_url" placeholder="Image URL (optional)"/>
+        <button type="submit" class="btn">Publish News</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- List News Items -->
+  <section class="section alt reveal" id="news-list">
+    <div class="container">
+      <h2>All News &amp; Events</h2>
+      <div id="newsContainer" class="news-container">
+        <!-- JS will inject news cards here -->
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <!-- same footer-widgets as other pages -->
+      <div class="footer-widgets">
+        <div>
+          <h4>Contact</h4>
+          <p>123 School Rd.<br/>City, Country<br/>+1 (555) 123-4567</p>
+        </div>
+        <div>
+          <h4>Follow Us</h4>
+          <a href="#"><img src="assets/images/icon-facebook.svg" alt="Facebook"/></a>
+          <a href="#"><img src="assets/images/icon-twitter.svg" alt="Twitter"/></a>
+          <a href="#"><img src="assets/images/icon-instagram.svg" alt="Instagram"/></a>
+        </div>
+      </div>
+      <p>© 2025 Acme Academy. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="js/main.js"></script>
+  <script>
+    // Overlay nav handlers
+    const overlay = document.getElementById('overlayNav');
+    document.getElementById('openNav')
+      .addEventListener('click', () => overlay.classList.add('open'));
+    document.getElementById('closeNav')
+      .addEventListener('click', () => overlay.classList.remove('open'));
+
+    // Submit news form
+    const newsForm = document.getElementById('newsForm');
+    newsForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      const data = {
+        title:      newsForm.title.value,
+        content:    newsForm.content.value,
+        image_url:  newsForm.image_url.value || null
+      };
+      const res = await fetch('http://127.0.0.1:8000/api/news', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(data)
+      });
+      if (res.ok) {
+        alert('News published!');
+        newsForm.reset();
+        loadNews(); // refresh list
+      } else {
+        alert('Error: ' + await res.text());
+      }
+    });
+
+    // Fetch & render news items
+    async function loadNews() {
+      const res = await fetch('http://127.0.0.1:8000/api/news');
+      const news = await res.json();
+      const container = document.getElementById('newsContainer');
+      container.innerHTML = news.map(item => `
+        <div class="news-post">
+          <h3>${item.title}</h3>
+          <p>${item.content}</p>
+          ${ item.image_url 
+            ? `<img src="${item.image_url}" alt="${item.title}" class="news-img"/>`
+            : '' }
+          <small>Posted on ${new Date(item.created_at).toLocaleDateString()}</small>
+        </div>`
+      ).join('');
+    }
+
+    // Initial load
+    loadNews();
+  </script>
+</body>
+</html>

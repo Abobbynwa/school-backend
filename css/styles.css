@@ -1,0 +1,424 @@
+:root {
+  --color-primary: #007acc;
+  --color-secondary: #004080;
+  --color-bg-light: #f9f9f9;
+  --color-bg-card: #f4f4f4;
+  --color-bg-dark: #002f55;
+  --color-text: #333;
+  --color-text-light: #ccc;
+  --color-white: #fff;
+}
+
+/* ==========================================================================
+   1. RESET & BASE
+   ========================================================================== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0; padding: 0;
+}
+html {
+  scroll-behavior: smooth;
+}
+body {
+  font-family: sans-serif;
+  line-height: 1.6;
+  color: var(--color-text);
+  background: var(--color-white);
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button {
+  font: inherit;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+/* ==========================================================================
+   2. LAYOUT CONTAINERS
+   ========================================================================== */
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+/* ==========================================================================
+   3. OVERLAY NAV & MINI HEADER
+   ========================================================================== */
+.overlay-nav {
+  position: fixed; top: 0; left: 0;
+  width: 0; height: 100%;
+  background: rgba(0,0,0,0.95);
+  overflow-x: hidden;
+  transition: width .3s ease;
+  z-index: 1001;
+}
+.overlay-nav.open { width: 100%; }
+.overlay-close {
+  position: absolute; top: 1rem; right: 1.5rem;
+  font-size: 2.5rem; color: var(--color-white);
+}
+.overlay-menu {
+  height: 100%; display: flex;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 2rem;
+}
+.overlay-menu a {
+  font-size: 2rem; color: var(--color-white);
+  transition: color .2s;
+}
+.overlay-menu a:hover { color: var(--color-primary); }
+
+.mini-header {
+  position: fixed; top: 0; left: 0; right: 0;
+  background: var(--color-white);
+  padding: 1rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,.1);
+  display: flex; justify-content: space-between; align-items: center;
+  z-index: 1000;
+}
+.logo {
+  font-size: 1.5rem; font-weight: bold;
+  color: var(--color-secondary);
+}
+.overlay-open {
+  font-size: 1.8rem; color: var(--color-secondary);
+}
+
+/* ==========================================================================
+   4. HERO & ANIMATIONS
+   ========================================================================== */
+.hero {
+  min-height: 80vh;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; color: var(--color-white);
+  padding: 0 1rem;
+  background:
+    linear-gradient(rgba(0,0,0,.4),rgba(0,0,0,.4)),
+    url('../assets/images/hero.jpg') center/cover fixed no-repeat;
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.hero-content h1 {
+  font-size: 2.5rem; margin-bottom: 1rem;
+  animation: fadeInUp .8s ease-out both;
+}
+.hero-content p {
+  font-size: 1.2rem; margin-bottom: 1.5rem;
+  animation: fadeInUp 1.3s ease-out both;
+}
+
+/* Typewriter cursor */
+.cursor {
+  display: inline-block;
+  animation: blink .7s infinite;
+}
+@keyframes blink {
+  0%,50% { opacity: 1; }
+  51%,100% { opacity: 0; }
+}
+
+/* ==========================================================================
+   5. BUTTONS
+   ========================================================================== */
+.btn {
+  display: inline-block;
+  background: var(--color-primary);
+  color: var(--color-white);
+  padding: .75rem 1.5rem;
+  border-radius: 4px;
+  transition: transform .2s, box-shadow .2s;
+}
+.btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0,0,0,.2);
+}
+
+/* ==========================================================================
+   6. NAVIGATION (MOBILE)
+   ========================================================================== */
+.nav-toggle {
+  display: none;
+}
+@media (max-width: 768px) {
+  .nav-toggle {
+    display: block;
+    font-size: 1.5rem;
+    color: var(--color-secondary);
+  }
+  .site-nav {
+    display: none;
+    position: absolute; top: 100%; left: 0; right: 0;
+    background: var(--color-secondary);
+  }
+  .site-nav.show { display: block; }
+  .site-nav ul { flex-direction: column; }
+}
+
+/* ==========================================================================
+   7. QUICK LINKS & CARD TILT
+   ========================================================================== */
+.quick-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(200px,1fr));
+  gap: 1rem;
+  margin: 3rem 0;
+}
+.quick-links .card {
+  background: var(--color-bg-card);
+  padding: 1.5rem;
+  border-radius: 4px;
+  text-align: center;
+  perspective: 1000px;
+  transform-style: preserve-3d;
+  transition: transform .3s, box-shadow .3s;
+}
+.quick-links .card:hover {
+  transform: rotateY(10deg) scale(1.03);
+  box-shadow: 0 8px 16px rgba(0,0,0,.2);
+}
+
+/* ==========================================================================
+   8. SCROLL-REVEAL UTILITY
+   ========================================================================== */
+.reveal {
+  opacity: 0; transform: translateY(30px);
+  transition: opacity .6s ease-out, transform .6s ease-out;
+}
+.reveal.show {
+  opacity: 1; transform: translateY(0);
+}
+
+/* ==========================================================================
+   9. SECTIONS
+   ========================================================================== */
+.section {
+  padding: 4rem 1rem;
+}
+.section.alt {
+  background: var(--color-bg-light);
+}
+.section h2 {
+  text-align: center; margin-bottom: 2rem;
+}
+
+/* ==========================================================================
+ 10. STAFF GRID & PROGRAM LIST
+   ========================================================================== */
+.staff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(200px,1fr));
+  gap: 1rem;
+  text-align: center;
+}
+.staff-member {
+  transition: transform .3s, box-shadow .3s;
+}
+.staff-member:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 6px 14px rgba(0,0,0,.15);
+}
+.staff-member img {
+  width: 150px; height: 150px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-bottom: .5rem;
+}
+.staff-member h4 {
+  margin: .5rem 0 .25rem;
+  color: var(--color-secondary);
+}
+.program-list {
+  list-style: disc inside;
+  margin-top: 1rem;
+}
+.program-list li {
+  margin-bottom: .5rem;
+}
+
+/* ==========================================================================
+ 11. ADMISSION UPDATES
+   ========================================================================== */
+.admission-updates-list {
+  list-style: none; padding-left: 0;
+}
+.admission-updates-list li {
+  position: relative; margin-bottom: .75rem; padding-left: 1.5rem;
+}
+.admission-updates-list li::before {
+  content: "📅"; position: absolute; left: 0;
+}
+
+/* ==========================================================================
+ 12. MAP EMBED
+   ========================================================================== */
+.map-container {
+  margin-top: 2rem;
+}
+
+/* ==========================================================================
+ 13. STATS GRID & COUNTERS
+   ========================================================================== */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(150px,1fr));
+  gap: 2rem;
+  text-align: center;
+}
+.stat h3 {
+  font-size: 2rem; color: var(--color-primary); margin-bottom: .5rem;
+}
+.stat p {
+  font-size: 1rem; color: var(--color-secondary);
+}
+
+/* ==========================================================================
+ 14. TESTIMONIAL SLIDER
+   ========================================================================== */
+.testimonials-section h2 {
+  text-align: center; margin-bottom: 2rem;
+}
+.testimonial-slider {
+  position: relative; overflow: hidden; height: 150px;
+}
+.testimonial-item {
+  position: absolute; width: 100%;
+  opacity: 0; transition: opacity .5s ease;
+  text-align: center; font-style: italic;
+}
+.testimonial-item.active {
+  opacity: 1;
+}
+.testimonial-item strong {
+  display: block; margin-top: .5rem;
+  color: var(--color-primary);
+}
+
+/* ==========================================================================
+ 15. FOOTER
+   ========================================================================== */
+.site-footer {
+  background: var(--color-bg-dark);
+  color: var(--color-text-light);
+  padding: 3rem 1rem 1rem;
+}
+.footer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(200px,1fr));
+  gap: 2rem; margin-bottom: 2rem;
+}
+.site-footer h4 {
+  color: var(--color-white);
+  margin-bottom: .75rem;
+  font-size: 1.1rem;
+}
+.footer-col p,
+.site-footer address,
+.footer-col ul {
+  font-size: .9rem; line-height: 1.5;
+}
+.footer-col ul {
+  list-style: none; padding: 0;
+}
+.footer-col ul li {
+  margin-bottom: .5rem;
+}
+.footer-col a {
+  transition: color .3s;
+}
+.footer-col a:hover {
+  color: var(--color-white);
+}
+
+/* Newsletter */
+.newsletter form {
+  display: flex; margin-bottom: 1rem;
+}
+.newsletter input {
+  flex: 1; padding: .5rem; border: none;
+  border-radius: 4px 0 0 4px; font-size: .9rem;
+}
+.newsletter button {
+  padding: .5rem 1rem; background: var(--color-primary);
+  color: var(--color-white); border-radius: 0 4px 4px 0;
+  transition: background .3s ease;
+}
+.newsletter button:hover {
+  background: darken(var(--color-primary), 10%);
+}
+
+/* Social icons */
+.social-icons {
+  display: flex; gap: .75rem;
+}
+.social-icons a {
+  width: 32px; height: 32px; background-size: cover;
+}
+.icon-facebook { background-image: url('../assets/images/icon-facebook.svg'); }
+.icon-twitter  { background-image: url('../assets/images/icon-twitter.svg'); }
+.icon-instagram{ background-image: url('../assets/images/icon-instagram.svg'); }
+
+/* Footer bottom */
+.footer-bottom {
+  display: flex; justify-content: space-between; align-items: center;
+  border-top: 1px solid var(--color-primary);
+  padding-top: 1rem; font-size: .85rem;
+}
+.back-to-top {
+  color: var(--color-primary); transition: color .3s;
+}
+.back-to-top:hover {
+  color: var(--color-white);
+}
+@media (max-width: 600px) {
+  .footer-bottom {
+    flex-direction: column; gap: .5rem;
+  }
+}
+
+/* ==========================================================================
+ 16. ABOUT PAGE SPECIFICS
+   ========================================================================== */
+.sub-hero {
+  min-height: 40vh;
+  background-position: center 30%;
+}
+.about-mission-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(280px,1fr));
+  gap: 2rem; margin-top: 2rem;
+}
+.about-mission-grid h3 {
+  color: var(--color-secondary); margin-bottom: .5rem;
+}
+.timeline {
+  position: relative; margin: 4rem 0; padding: 0 1rem;
+}
+.timeline::before {
+  content: ''; position: absolute; top: 0; left: 50%;
+  width: 4px; height: 100%; background: var(--color-primary);
+  transform: translateX(-50%);
+}
+.timeline-item {
+  position: relative; width: 45%;
+  padding: 1rem 1.5rem; background: var(--color-bg-card);
+  border-radius: 4px; margin: 2rem 0;
+}
+.timeline-item:nth-child(even) { left: 55%; }
+.timeline-item:nth-child(odd)  { left: 0; }
+.timeline-item::before {
+  content: ''; position: absolute; top: 1rem;
+  width: 12px; height: 12px; background: var(--color-primary);
+  border: 3px solid var(--color-white); border-radius: 50%;
+  left: -32px;
+}
+.timeline-item:nth-child(even)::before {
+  left: auto; right: -32px;
+}

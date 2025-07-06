@@ -1,0 +1,7 @@
+[build]
+  functions = "netlify/functions"
+
+[functions]
+  # default Python runtime
+  node_bundler = "esbuild"
+  python_version = "3.9"
