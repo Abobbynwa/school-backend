@@ -61,12 +61,21 @@ const initializeDatabase = async () => {
       email TEXT NOT NULL UNIQUE,
       class_name TEXT NOT NULL,
       gender TEXT DEFAULT 'Not specified',
+      age INTEGER,
+      genotype TEXT DEFAULT 'Not specified',
       parent_name TEXT DEFAULT 'Not specified',
+      parent_phone TEXT DEFAULT 'Not specified',
+      home_address TEXT DEFAULT 'Not specified',
       term TEXT DEFAULT 'Not specified',
       subjects TEXT[] DEFAULT '{}',
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS age INTEGER;
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS genotype TEXT DEFAULT 'Not specified';
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_phone TEXT DEFAULT 'Not specified';
+    ALTER TABLE students ADD COLUMN IF NOT EXISTS home_address TEXT DEFAULT 'Not specified';
 
     CREATE TABLE IF NOT EXISTS staff (
       id BIGSERIAL PRIMARY KEY,
@@ -186,22 +195,9 @@ app.get("/", (req, res) => {
 app.get("/api/health", async (req, res) => {
   try {
     await query("SELECT 1");
-    res.status(200).json({
-      status: "healthy",
-      service: "school-backend-api",
-      database: "connected",
-      auth: "enabled",
-      timestamp: new Date().toISOString(),
-    });
+    res.status(200).json({ status: "healthy", service: "school-backend-api", database: "connected", auth: "enabled", timestamp: new Date().toISOString() });
   } catch (error) {
-    res.status(200).json({
-      status: "degraded",
-      service: "school-backend-api",
-      database: "disconnected",
-      auth: "enabled",
-      message: error.message,
-      timestamp: new Date().toISOString(),
-    });
+    res.status(200).json({ status: "degraded", service: "school-backend-api", database: "disconnected", auth: "enabled", message: error.message, timestamp: new Date().toISOString() });
   }
 });
 
@@ -217,25 +213,16 @@ app.get("/api/db-health", async (req, res) => {
 app.post("/api/auth/register-admin", async (req, res) => {
   try {
     const { name, email, password } = req.body;
-
-    if (!name || !email || !password) {
-      return res.status(400).json({ success: false, message: "Name, email, and password are required." });
-    }
-
-    if (password.length < 8) {
-      return res.status(400).json({ success: false, message: "Password must be at least 8 characters." });
-    }
+    if (!name || !email || !password) return res.status(400).json({ success: false, message: "Name, email, and password are required." });
+    if (password.length < 8) return res.status(400).json({ success: false, message: "Password must be at least 8 characters." });
 
     const adminCount = await query("SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin'");
-    if (adminCount.rows[0].count > 0) {
-      return res.status(403).json({ success: false, message: "Admin account already exists. Use login instead." });
-    }
+    if (adminCount.rows[0].count > 0) return res.status(403).json({ success: false, message: "Admin account already exists. Use login instead." });
 
     const passwordHash = await bcrypt.hash(password, 12);
     const result = await query(
       `INSERT INTO users (name, email, password_hash, role)
-       VALUES ($1, $2, $3, 'admin')
-       RETURNING id, name, email, role, created_at`,
+       VALUES ($1, $2, $3, 'admin') RETURNING id, name, email, role, created_at`,
       [name, email.toLowerCase(), passwordHash]
     );
 
@@ -243,9 +230,7 @@ app.post("/api/auth/register-admin", async (req, res) => {
     const token = signToken(user);
     res.status(201).json({ success: true, message: "Admin registered successfully.", token, user });
   } catch (error) {
-    if (error.code === "23505") {
-      return res.status(409).json({ success: false, message: "Email already exists." });
-    }
+    if (error.code === "23505") return res.status(409).json({ success: false, message: "Email already exists." });
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -253,29 +238,16 @@ app.post("/api/auth/register-admin", async (req, res) => {
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ success: false, message: "Email and password are required." });
-    }
+    if (!email || !password) return res.status(400).json({ success: false, message: "Email and password are required." });
 
     const result = await query("SELECT * FROM users WHERE email = $1", [email.toLowerCase()]);
-    if (!result.rowCount) {
-      return res.status(401).json({ success: false, message: "Invalid login details." });
-    }
+    if (!result.rowCount) return res.status(401).json({ success: false, message: "Invalid login details." });
 
     const userRecord = result.rows[0];
     const passwordValid = await bcrypt.compare(password, userRecord.password_hash);
-    if (!passwordValid) {
-      return res.status(401).json({ success: false, message: "Invalid login details." });
-    }
+    if (!passwordValid) return res.status(401).json({ success: false, message: "Invalid login details." });
 
-    const user = {
-      id: userRecord.id,
-      name: userRecord.name,
-      email: userRecord.email,
-      role: userRecord.role,
-      created_at: userRecord.created_at,
-    };
-
+    const user = { id: userRecord.id, name: userRecord.name, email: userRecord.email, role: userRecord.role, created_at: userRecord.created_at };
     const token = signToken(user);
     res.json({ success: true, message: "Login successful.", token, user });
   } catch (error) {
@@ -297,7 +269,6 @@ app.get("/api/summary", async (req, res) => {
       query("SELECT COUNT(*)::int AS count FROM messages"),
       query("SELECT COUNT(*)::int AS count FROM notifications"),
     ]);
-
     res.json({ success: true, data: { students: students.rows[0].count, staff: staff.rows[0].count, grades: grades.rows[0].count, announcements: announcements.rows[0].count, messages: messages.rows[0].count, notifications: notifications.rows[0].count } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -315,15 +286,25 @@ app.get("/api/students", async (req, res) => {
 
 app.post("/api/students", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, email, className, gender, parentName, term, subjects } = req.body;
-    if (!name || !email || !className) {
-      return res.status(400).json({ success: false, message: "Name, email, and className are required." });
-    }
+    const { name, email, className, gender, age, genotype, parentName, parentPhone, homeAddress, term, subjects } = req.body;
+    if (!name || !email || !className) return res.status(400).json({ success: false, message: "Name, email, and className are required." });
 
     const result = await query(
-      `INSERT INTO students (name, email, class_name, gender, parent_name, term, subjects)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [name, email.toLowerCase(), className, gender || "Not specified", parentName || "Not specified", term || "Not specified", parseSubjects(subjects)]
+      `INSERT INTO students (name, email, class_name, gender, age, genotype, parent_name, parent_phone, home_address, term, subjects)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+      [
+        name,
+        email.toLowerCase(),
+        className,
+        gender || "Not specified",
+        age ? Number(age) : null,
+        genotype || "Not specified",
+        parentName || "Not specified",
+        parentPhone || "Not specified",
+        homeAddress || "Not specified",
+        term || "Not specified",
+        parseSubjects(subjects),
+      ]
     );
 
     res.status(201).json({ success: true, message: "Student created successfully.", data: result.rows[0] });
@@ -345,9 +326,7 @@ app.get("/api/staff", async (req, res) => {
 app.post("/api/staff", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { name, email, role, classHandled, gender, subjects } = req.body;
-    if (!name || !email || !role) {
-      return res.status(400).json({ success: false, message: "Name, email, and role are required." });
-    }
+    if (!name || !email || !role) return res.status(400).json({ success: false, message: "Name, email, and role are required." });
 
     const result = await query(
       `INSERT INTO staff (name, email, role, class_handled, gender, subjects)
@@ -374,9 +353,7 @@ app.get("/api/grades", async (req, res) => {
 app.post("/api/grades", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { studentId, subject, score, term } = req.body;
-    if (!studentId || !subject || score === undefined) {
-      return res.status(400).json({ success: false, message: "studentId, subject, and score are required." });
-    }
+    if (!studentId || !subject || score === undefined) return res.status(400).json({ success: false, message: "studentId, subject, and score are required." });
 
     const numericScore = Number(score);
     const grade = calculateGrade(numericScore);
