@@ -27,9 +27,16 @@
     "morgan": "latest",
     "pg": "latest"
   },
-  "devDependencies": {
-    "nodemon": "latest"
-  },
+ "dependencies": {
+  "bcryptjs": "latest",
+  "cors": "latest",
+  "dotenv": "latest",
+  "express": "latest",
+  "helmet": "latest",
+  "jsonwebtoken": "latest",
+  "morgan": "latest",
+  "pg": "latest"
+}
   "engines": {
     "node": ">=18.0.0"
   }
