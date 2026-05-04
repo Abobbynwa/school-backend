@@ -15,28 +15,24 @@
     "api",
     "education-technology",
     "postgresql",
-    "supabase"
+    "supabase",
+    "jwt-auth"
   ],
   "author": "Agaba Valentine",
   "license": "MIT",
   "dependencies": {
+    "bcryptjs": "latest",
     "cors": "latest",
     "dotenv": "latest",
     "express": "latest",
     "helmet": "latest",
+    "jsonwebtoken": "latest",
     "morgan": "latest",
     "pg": "latest"
   },
- "dependencies": {
-  "bcryptjs": "latest",
-  "cors": "latest",
-  "dotenv": "latest",
-  "express": "latest",
-  "helmet": "latest",
-  "jsonwebtoken": "latest",
-  "morgan": "latest",
-  "pg": "latest"
-}
+  "devDependencies": {
+    "nodemon": "latest"
+  },
   "engines": {
     "node": ">=18.0.0"
   }
