@@ -80,9 +80,12 @@ const initializeDatabase = async () => {
       score NUMERIC(5,2) NOT NULL CHECK (score >= 0 AND score <= 100),
       grade TEXT NOT NULL,
       term TEXT DEFAULT 'Not specified',
+      uploaded_by TEXT DEFAULT 'Admin',
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    ALTER TABLE grades ADD COLUMN IF NOT EXISTS uploaded_by TEXT DEFAULT 'Admin';
 
     CREATE TABLE IF NOT EXISTS fee_items (
       id BIGSERIAL PRIMARY KEY,
@@ -155,6 +158,12 @@ const requireAuth = async (req, res, next) => {
   }
 };
 const requireAdmin = (req, res, next) => req.user?.role === "admin" ? next() : res.status(403).json({ success: false, message: "Admin access required." });
+const requireStaffOrAdmin = (req, res, next) => ["admin", "staff"].includes(req.user?.role) ? next() : res.status(403).json({ success: false, message: "Staff or admin access required." });
+
+const getStaffProfileByEmail = async (email) => {
+  const staff = await query("SELECT * FROM staff WHERE email=$1", [email.toLowerCase()]);
+  return staff.rows[0] || null;
+};
 
 app.get("/", (req, res) => res.json({ message: "School Management Portal API is running", status: "success" }));
 app.get("/api/health", async (req, res) => {
@@ -218,6 +227,18 @@ app.post("/api/students", requireAuth, requireAdmin, async (req, res) => {
     res.status(201).json({ success: true, message: "Student created successfully.", data: r.rows[0] });
   } catch (error) { if (error.code === "23505") return res.status(409).json({ success: false, message: "Student email already exists." }); res.status(500).json({ success: false, message: error.message }); }
 });
+app.put("/api/students/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { name, email, className, gender, age, genotype, parentName, parentPhone, homeAddress, term, subjects } = req.body;
+    const r = await query(`UPDATE students SET name=COALESCE($1,name), email=COALESCE($2,email), class_name=COALESCE($3,class_name), gender=COALESCE($4,gender), age=COALESCE($5,age), genotype=COALESCE($6,genotype), parent_name=COALESCE($7,parent_name), parent_phone=COALESCE($8,parent_phone), home_address=COALESCE($9,home_address), term=COALESCE($10,term), subjects=COALESCE($11,subjects), updated_at=NOW() WHERE id=$12 RETURNING *`, [name || null, email ? email.toLowerCase() : null, className || null, gender || null, age ? Number(age) : null, genotype || null, parentName || null, parentPhone || null, homeAddress || null, term || null, subjects ? parseSubjects(subjects) : null, req.params.id]);
+    if (!r.rowCount) return res.status(404).json({ success: false, message: "Student not found." });
+    res.json({ success: true, message: "Student updated successfully.", data: r.rows[0] });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
+});
+app.delete("/api/students/:id", requireAuth, requireAdmin, async (req, res) => {
+  try { const r = await query("DELETE FROM students WHERE id=$1 RETURNING *", [req.params.id]); if (!r.rowCount) return res.status(404).json({ success: false, message: "Student not found." }); res.json({ success: true, message: "Student deleted successfully." }); }
+  catch (error) { res.status(500).json({ success: false, message: error.message }); }
+});
 
 app.get("/api/staff", async (req, res) => {
   try { const r = await query("SELECT * FROM staff ORDER BY created_at DESC"); res.json({ success: true, count: r.rowCount, data: r.rows }); }
@@ -225,11 +246,60 @@ app.get("/api/staff", async (req, res) => {
 });
 app.post("/api/staff", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, email, role, classHandled, gender, subjects } = req.body;
-    if (!name || !email || !role) return res.status(400).json({ success: false, message: "Name, email, and role are required." });
+    const { name, email, password, role, classHandled, gender, subjects } = req.body;
+    if (!name || !email || !role || !password) return res.status(400).json({ success: false, message: "Name, email, password, and role are required." });
+    if (password.length < 8) return res.status(400).json({ success: false, message: "Staff password must be at least 8 characters." });
+    const hash = await bcrypt.hash(password, 12);
+    await query("INSERT INTO users (name, email, password_hash, role) VALUES ($1,$2,$3,'staff') ON CONFLICT (email) DO UPDATE SET name=EXCLUDED.name, password_hash=EXCLUDED.password_hash, role='staff', updated_at=NOW()", [name, email.toLowerCase(), hash]);
     const r = await query("INSERT INTO staff (name, email, role, class_handled, gender, subjects) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *", [name, email.toLowerCase(), role, classHandled || "Not assigned", gender || "Not specified", parseSubjects(subjects)]);
-    res.status(201).json({ success: true, message: "Staff member created successfully.", data: r.rows[0] });
+    res.status(201).json({ success: true, message: "Staff member and login created successfully.", data: r.rows[0] });
   } catch (error) { if (error.code === "23505") return res.status(409).json({ success: false, message: "Staff email already exists." }); res.status(500).json({ success: false, message: error.message }); }
+});
+app.put("/api/staff/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { name, email, role, classHandled, gender, subjects, password } = req.body;
+    const old = await query("SELECT * FROM staff WHERE id=$1", [req.params.id]);
+    if (!old.rowCount) return res.status(404).json({ success: false, message: "Staff not found." });
+    const r = await query("UPDATE staff SET name=COALESCE($1,name), email=COALESCE($2,email), role=COALESCE($3,role), class_handled=COALESCE($4,class_handled), gender=COALESCE($5,gender), subjects=COALESCE($6,subjects), updated_at=NOW() WHERE id=$7 RETURNING *", [name || null, email ? email.toLowerCase() : null, role || null, classHandled || null, gender || null, subjects ? parseSubjects(subjects) : null, req.params.id]);
+    if (password && password.length >= 8) {
+      const hash = await bcrypt.hash(password, 12);
+      await query("UPDATE users SET name=$1, email=$2, password_hash=$3, role='staff', updated_at=NOW() WHERE email=$4", [r.rows[0].name, r.rows[0].email, hash, old.rows[0].email]);
+    } else {
+      await query("UPDATE users SET name=$1, email=$2, role='staff', updated_at=NOW() WHERE email=$3", [r.rows[0].name, r.rows[0].email, old.rows[0].email]);
+    }
+    res.json({ success: true, message: "Staff updated successfully.", data: r.rows[0] });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
+});
+app.delete("/api/staff/:id", requireAuth, requireAdmin, async (req, res) => {
+  try { const r = await query("DELETE FROM staff WHERE id=$1 RETURNING *", [req.params.id]); if (!r.rowCount) return res.status(404).json({ success: false, message: "Staff not found." }); await query("DELETE FROM users WHERE email=$1 AND role='staff'", [r.rows[0].email]); res.json({ success: true, message: "Staff and login deleted successfully." }); }
+  catch (error) { res.status(500).json({ success: false, message: error.message }); }
+});
+
+app.get("/api/staff/my-students", requireAuth, requireStaffOrAdmin, async (req, res) => {
+  try {
+    if (req.user.role === "admin") { const r = await query("SELECT * FROM students ORDER BY class_name, name"); return res.json({ success: true, count: r.rowCount, data: r.rows }); }
+    const profile = await getStaffProfileByEmail(req.user.email);
+    if (!profile) return res.status(404).json({ success: false, message: "Staff profile not found." });
+    const r = await query("SELECT * FROM students WHERE class_name=$1 ORDER BY name", [profile.class_handled]);
+    res.json({ success: true, count: r.rowCount, staff: profile, data: r.rows });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
+});
+
+app.post("/api/staff/grades", requireAuth, requireStaffOrAdmin, async (req, res) => {
+  try {
+    const { studentId, subject, score, term } = req.body;
+    if (!studentId || !subject || score === undefined) return res.status(400).json({ success: false, message: "studentId, subject, and score are required." });
+    const student = await query("SELECT * FROM students WHERE id=$1", [studentId]);
+    if (!student.rowCount) return res.status(404).json({ success: false, message: "Student not found." });
+    if (req.user.role === "staff") {
+      const profile = await getStaffProfileByEmail(req.user.email);
+      if (!profile) return res.status(404).json({ success: false, message: "Staff profile not found." });
+      if (profile.class_handled !== student.rows[0].class_name) return res.status(403).json({ success: false, message: "You can only upload results for your assigned class." });
+    }
+    const numeric = Number(score); const grade = calculateGrade(numeric);
+    const r = await query("INSERT INTO grades (student_id, subject, score, grade, term, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *", [Number(studentId), subject, numeric, grade, term || student.rows[0].term || "Not specified", req.user.name]);
+    res.status(201).json({ success: true, message: "Result uploaded successfully.", data: r.rows[0] });
+  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
 });
 
 app.get("/api/grades", async (req, res) => {
@@ -241,10 +311,18 @@ app.post("/api/grades", requireAuth, requireAdmin, async (req, res) => {
     const { studentId, subject, score, term } = req.body;
     if (!studentId || !subject || score === undefined) return res.status(400).json({ success: false, message: "studentId, subject, and score are required." });
     const numeric = Number(score); const grade = calculateGrade(numeric);
-    const r = await query("INSERT INTO grades (student_id, subject, score, grade, term) VALUES ($1,$2,$3,$4,$5) RETURNING *", [Number(studentId), subject, numeric, grade, term || "Not specified"]);
+    const r = await query("INSERT INTO grades (student_id, subject, score, grade, term, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *", [Number(studentId), subject, numeric, grade, term || "Not specified", req.user.name]);
     await query("INSERT INTO notifications (type, recipient, subject, message, status) VALUES ($1,$2,$3,$4,$5)", ["email", "parent@example.com", `New ${subject} grade uploaded`, `A score of ${numeric} has been uploaded for student #${studentId}.`, "queued"]);
     res.status(201).json({ success: true, message: "Grade uploaded successfully.", data: r.rows[0] });
   } catch (error) { res.status(500).json({ success: false, message: error.message }); }
+});
+app.put("/api/grades/:id", requireAuth, requireAdmin, async (req, res) => {
+  try { const { subject, score, term } = req.body; const numeric = score !== undefined ? Number(score) : null; const grade = numeric !== null ? calculateGrade(numeric) : null; const r = await query("UPDATE grades SET subject=COALESCE($1,subject), score=COALESCE($2,score), grade=COALESCE($3,grade), term=COALESCE($4,term), updated_at=NOW() WHERE id=$5 RETURNING *", [subject || null, numeric, grade, term || null, req.params.id]); if (!r.rowCount) return res.status(404).json({ success: false, message: "Grade not found." }); res.json({ success: true, message: "Grade updated successfully.", data: r.rows[0] }); }
+  catch (error) { res.status(500).json({ success: false, message: error.message }); }
+});
+app.delete("/api/grades/:id", requireAuth, requireAdmin, async (req, res) => {
+  try { const r = await query("DELETE FROM grades WHERE id=$1 RETURNING *", [req.params.id]); if (!r.rowCount) return res.status(404).json({ success: false, message: "Grade not found." }); res.json({ success: true, message: "Grade deleted successfully." }); }
+  catch (error) { res.status(500).json({ success: false, message: error.message }); }
 });
 
 app.get("/api/results", async (req, res) => {
@@ -264,39 +342,15 @@ app.get("/api/results/:studentId", async (req, res) => {
   } catch (error) { res.status(500).json({ success: false, message: error.message }); }
 });
 
-app.get("/api/fees", async (req, res) => {
-  try { const r = await query("SELECT * FROM fee_items ORDER BY created_at DESC"); res.json({ success: true, count: r.rowCount, data: r.rows }); }
-  catch (error) { res.status(500).json({ success: false, message: error.message }); }
-});
-app.post("/api/fees", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { title, className, term, amount, session } = req.body;
-    if (!title || !className || !term || amount === undefined) return res.status(400).json({ success: false, message: "Title, class, term, and amount are required." });
-    const r = await query("INSERT INTO fee_items (title, class_name, term, amount, session) VALUES ($1,$2,$3,$4,$5) RETURNING *", [title, className, term, Number(amount), session || "2025/2026"]);
-    res.status(201).json({ success: true, message: "School fee created successfully.", data: r.rows[0] });
-  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
-});
+app.get("/api/fees", async (req, res) => { try { const r = await query("SELECT * FROM fee_items ORDER BY created_at DESC"); res.json({ success: true, count: r.rowCount, data: r.rows }); } catch (error) { res.status(500).json({ success: false, message: error.message }); } });
+app.post("/api/fees", requireAuth, requireAdmin, async (req, res) => { try { const { title, className, term, amount, session } = req.body; if (!title || !className || !term || amount === undefined) return res.status(400).json({ success: false, message: "Title, class, term, and amount are required." }); const r = await query("INSERT INTO fee_items (title, class_name, term, amount, session) VALUES ($1,$2,$3,$4,$5) RETURNING *", [title, className, term, Number(amount), session || "2025/2026"]); res.status(201).json({ success: true, message: "School fee created successfully.", data: r.rows[0] }); } catch (error) { res.status(500).json({ success: false, message: error.message }); } });
+app.put("/api/fees/:id", requireAuth, requireAdmin, async (req, res) => { try { const { title, className, term, amount, session } = req.body; const r = await query("UPDATE fee_items SET title=COALESCE($1,title), class_name=COALESCE($2,class_name), term=COALESCE($3,term), amount=COALESCE($4,amount), session=COALESCE($5,session), updated_at=NOW() WHERE id=$6 RETURNING *", [title || null, className || null, term || null, amount ? Number(amount) : null, session || null, req.params.id]); if (!r.rowCount) return res.status(404).json({ success: false, message: "Fee not found." }); res.json({ success: true, message: "Fee updated successfully.", data: r.rows[0] }); } catch (error) { res.status(500).json({ success: false, message: error.message }); } });
+app.delete("/api/fees/:id", requireAuth, requireAdmin, async (req, res) => { try { const r = await query("DELETE FROM fee_items WHERE id=$1 RETURNING *", [req.params.id]); if (!r.rowCount) return res.status(404).json({ success: false, message: "Fee not found." }); res.json({ success: true, message: "Fee deleted successfully." }); } catch (error) { res.status(500).json({ success: false, message: error.message }); } });
 
-app.get("/api/payments", async (req, res) => {
-  try {
-    const r = await query(`SELECT fee_payments.*, students.name AS student_name, students.class_name, fee_items.title AS fee_title, fee_items.amount AS fee_amount FROM fee_payments LEFT JOIN students ON students.id=fee_payments.student_id LEFT JOIN fee_items ON fee_items.id=fee_payments.fee_item_id ORDER BY fee_payments.created_at DESC`);
-    res.json({ success: true, count: r.rowCount, data: r.rows });
-  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
-});
-app.post("/api/payments", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { studentId, feeItemId, amountPaid, paymentMethod, reference, note } = req.body;
-    if (!studentId || !feeItemId || amountPaid === undefined) return res.status(400).json({ success: false, message: "Student, fee item, and amount paid are required." });
-    const r = await query("INSERT INTO fee_payments (student_id, fee_item_id, amount_paid, payment_method, reference, note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *", [Number(studentId), Number(feeItemId), Number(amountPaid), paymentMethod || "Cash", reference || null, note || null]);
-    res.status(201).json({ success: true, message: "Payment recorded successfully.", data: r.rows[0] });
-  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
-});
-app.get("/api/fee-balances", async (req, res) => {
-  try {
-    const r = await query(`SELECT students.id AS student_id, students.name AS student_name, students.class_name, fee_items.id AS fee_item_id, fee_items.title, fee_items.term, fee_items.amount AS expected_amount, COALESCE(SUM(fee_payments.amount_paid),0) AS paid_amount, (fee_items.amount - COALESCE(SUM(fee_payments.amount_paid),0)) AS balance FROM students JOIN fee_items ON fee_items.class_name = students.class_name LEFT JOIN fee_payments ON fee_payments.student_id = students.id AND fee_payments.fee_item_id = fee_items.id GROUP BY students.id, fee_items.id ORDER BY students.name ASC`);
-    res.json({ success: true, count: r.rowCount, data: r.rows });
-  } catch (error) { res.status(500).json({ success: false, message: error.message }); }
-});
+app.get("/api/payments", async (req, res) => { try { const r = await query(`SELECT fee_payments.*, students.name AS student_name, students.class_name, fee_items.title AS fee_title, fee_items.amount AS fee_amount FROM fee_payments LEFT JOIN students ON students.id=fee_payments.student_id LEFT JOIN fee_items ON fee_items.id=fee_payments.fee_item_id ORDER BY fee_payments.created_at DESC`); res.json({ success: true, count: r.rowCount, data: r.rows }); } catch (error) { res.status(500).json({ success: false, message: error.message }); } });
+app.post("/api/payments", requireAuth, requireAdmin, async (req, res) => { try { const { studentId, feeItemId, amountPaid, paymentMethod, reference, note } = req.body; if (!studentId || !feeItemId || amountPaid === undefined) return res.status(400).json({ success: false, message: "Student, fee item, and amount paid are required." }); const r = await query("INSERT INTO fee_payments (student_id, fee_item_id, amount_paid, payment_method, reference, note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *", [Number(studentId), Number(feeItemId), Number(amountPaid), paymentMethod || "Cash", reference || null, note || null]); res.status(201).json({ success: true, message: "Payment recorded successfully.", data: r.rows[0] }); } catch (error) { res.status(500).json({ success: false, message: error.message }); } });
+app.delete("/api/payments/:id", requireAuth, requireAdmin, async (req, res) => { try { const r = await query("DELETE FROM fee_payments WHERE id=$1 RETURNING *", [req.params.id]); if (!r.rowCount) return res.status(404).json({ success: false, message: "Payment not found." }); res.json({ success: true, message: "Payment deleted successfully." }); } catch (error) { res.status(500).json({ success: false, message: error.message }); } });
+app.get("/api/fee-balances", async (req, res) => { try { const r = await query(`SELECT students.id AS student_id, students.name AS student_name, students.class_name, fee_items.id AS fee_item_id, fee_items.title, fee_items.term, fee_items.amount AS expected_amount, COALESCE(SUM(fee_payments.amount_paid),0) AS paid_amount, (fee_items.amount - COALESCE(SUM(fee_payments.amount_paid),0)) AS balance FROM students JOIN fee_items ON fee_items.class_name = students.class_name LEFT JOIN fee_payments ON fee_payments.student_id = students.id AND fee_payments.fee_item_id = fee_items.id GROUP BY students.id, fee_items.id ORDER BY students.name ASC`); res.json({ success: true, count: r.rowCount, data: r.rows }); } catch (error) { res.status(500).json({ success: false, message: error.message }); } });
 
 app.get("/api/announcements", async (req, res) => { try { const r = await query("SELECT * FROM announcements ORDER BY created_at DESC"); res.json({ success: true, count: r.rowCount, data: r.rows }); } catch (error) { res.status(500).json({ success: false, message: error.message }); } });
 app.post("/api/announcements", requireAuth, requireAdmin, async (req, res) => { try { const { title, message, audience } = req.body; if (!title || !message) return res.status(400).json({ success: false, message: "Title and message are required." }); const r = await query("INSERT INTO announcements (title,message,audience) VALUES ($1,$2,$3) RETURNING *", [title, message, audience || "All"]); res.status(201).json({ success: true, message: "Announcement published successfully.", data: r.rows[0] }); } catch (error) { res.status(500).json({ success: false, message: error.message }); } });
@@ -308,13 +362,7 @@ app.post("/api/notifications", requireAuth, requireAdmin, async (req, res) => { 
 app.use((req, res) => res.status(404).json({ success: false, message: "Route not found." }));
 
 const startServer = async () => {
-  try {
-    await initializeDatabase();
-    console.log("Database tables are ready.");
-    app.listen(PORT, () => console.log(`School backend API running on port ${PORT}`));
-  } catch (error) {
-    console.error("Database initialization failed:", error.message);
-    process.exit(1);
-  }
+  try { await initializeDatabase(); console.log("Database tables are ready."); app.listen(PORT, () => console.log(`School backend API running on port ${PORT}`)); }
+  catch (error) { console.error("Database initialization failed:", error.message); process.exit(1); }
 };
 startServer();
