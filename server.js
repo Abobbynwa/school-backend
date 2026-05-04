@@ -10,7 +10,6 @@ import jwt from "jsonwebtoken";
 dotenv.config();
 
 const { Pool } = pg;
-
 const app = express();
 const PORT = process.env.PORT || 5000;
 const CLIENT_URL = process.env.CLIENT_URL || "*";
@@ -43,6 +42,83 @@ app.use(express.json());
 app.use(morgan("dev"));
 
 const query = async (text, params = []) => pool.query(text, params);
+
+const initializeDatabase = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id BIGSERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('admin', 'staff', 'student')),
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS students (
+      id BIGSERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      class_name TEXT NOT NULL,
+      gender TEXT DEFAULT 'Not specified',
+      parent_name TEXT DEFAULT 'Not specified',
+      term TEXT DEFAULT 'Not specified',
+      subjects TEXT[] DEFAULT '{}',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS staff (
+      id BIGSERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      role TEXT NOT NULL,
+      class_handled TEXT DEFAULT 'Not assigned',
+      gender TEXT DEFAULT 'Not specified',
+      subjects TEXT[] DEFAULT '{}',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS grades (
+      id BIGSERIAL PRIMARY KEY,
+      student_id BIGINT REFERENCES students(id) ON DELETE CASCADE,
+      subject TEXT NOT NULL,
+      score NUMERIC(5,2) NOT NULL CHECK (score >= 0 AND score <= 100),
+      grade TEXT NOT NULL,
+      term TEXT DEFAULT 'Not specified',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS announcements (
+      id BIGSERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      audience TEXT DEFAULT 'All',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id BIGSERIAL PRIMARY KEY,
+      sender TEXT NOT NULL,
+      recipient TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id BIGSERIAL PRIMARY KEY,
+      type TEXT DEFAULT 'email',
+      recipient TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT DEFAULT 'queued',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+};
 
 const calculateGrade = (score) => {
   const numericScore = Number(score);
@@ -165,7 +241,6 @@ app.post("/api/auth/register-admin", async (req, res) => {
 
     const user = result.rows[0];
     const token = signToken(user);
-
     res.status(201).json({ success: true, message: "Admin registered successfully.", token, user });
   } catch (error) {
     if (error.code === "23505") {
@@ -178,7 +253,6 @@ app.post("/api/auth/register-admin", async (req, res) => {
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-
     if (!email || !password) {
       return res.status(400).json({ success: false, message: "Email and password are required." });
     }
@@ -190,7 +264,6 @@ app.post("/api/auth/login", async (req, res) => {
 
     const userRecord = result.rows[0];
     const passwordValid = await bcrypt.compare(password, userRecord.password_hash);
-
     if (!passwordValid) {
       return res.status(401).json({ success: false, message: "Invalid login details." });
     }
@@ -225,17 +298,7 @@ app.get("/api/summary", async (req, res) => {
       query("SELECT COUNT(*)::int AS count FROM notifications"),
     ]);
 
-    res.json({
-      success: true,
-      data: {
-        students: students.rows[0].count,
-        staff: staff.rows[0].count,
-        grades: grades.rows[0].count,
-        announcements: announcements.rows[0].count,
-        messages: messages.rows[0].count,
-        notifications: notifications.rows[0].count,
-      },
-    });
+    res.json({ success: true, data: { students: students.rows[0].count, staff: staff.rows[0].count, grades: grades.rows[0].count, announcements: announcements.rows[0].count, messages: messages.rows[0].count, notifications: notifications.rows[0].count } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -301,11 +364,7 @@ app.post("/api/staff", requireAuth, requireAdmin, async (req, res) => {
 
 app.get("/api/grades", async (req, res) => {
   try {
-    const result = await query(
-      `SELECT grades.*, students.name AS student_name
-       FROM grades LEFT JOIN students ON students.id = grades.student_id
-       ORDER BY grades.created_at DESC`
-    );
+    const result = await query(`SELECT grades.*, students.name AS student_name FROM grades LEFT JOIN students ON students.id = grades.student_id ORDER BY grades.created_at DESC`);
     res.json({ success: true, count: result.rowCount, data: result.rows });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -321,18 +380,8 @@ app.post("/api/grades", requireAuth, requireAdmin, async (req, res) => {
 
     const numericScore = Number(score);
     const grade = calculateGrade(numericScore);
-    const result = await query(
-      `INSERT INTO grades (student_id, subject, score, grade, term)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [Number(studentId), subject, numericScore, grade, term || "Not specified"]
-    );
-
-    await query(
-      `INSERT INTO notifications (type, recipient, subject, message, status)
-       VALUES ($1, $2, $3, $4, $5)`,
-      ["email", "parent@example.com", `New ${subject} grade uploaded`, `A score of ${numericScore} has been uploaded for student #${studentId}.`, "queued"]
-    );
-
+    const result = await query(`INSERT INTO grades (student_id, subject, score, grade, term) VALUES ($1, $2, $3, $4, $5) RETURNING *`, [Number(studentId), subject, numericScore, grade, term || "Not specified"]);
+    await query(`INSERT INTO notifications (type, recipient, subject, message, status) VALUES ($1, $2, $3, $4, $5)`, ["email", "parent@example.com", `New ${subject} grade uploaded`, `A score of ${numericScore} has been uploaded for student #${studentId}.`, "queued"]);
     res.status(201).json({ success: true, message: "Grade uploaded successfully and notification queued.", data: result.rows[0] });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -352,12 +401,7 @@ app.post("/api/announcements", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { title, message, audience } = req.body;
     if (!title || !message) return res.status(400).json({ success: false, message: "Title and message are required." });
-
-    const result = await query(
-      `INSERT INTO announcements (title, message, audience) VALUES ($1, $2, $3) RETURNING *`,
-      [title, message, audience || "All"]
-    );
-
+    const result = await query(`INSERT INTO announcements (title, message, audience) VALUES ($1, $2, $3) RETURNING *`, [title, message, audience || "All"]);
     res.status(201).json({ success: true, message: "Announcement published successfully.", data: result.rows[0] });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -377,12 +421,7 @@ app.post("/api/messages", requireAuth, async (req, res) => {
   try {
     const { to, message } = req.body;
     if (!to || !message) return res.status(400).json({ success: false, message: "To and message are required." });
-
-    const result = await query(
-      `INSERT INTO messages (sender, recipient, message) VALUES ($1, $2, $3) RETURNING *`,
-      [req.user.name, to, message]
-    );
-
+    const result = await query(`INSERT INTO messages (sender, recipient, message) VALUES ($1, $2, $3) RETURNING *`, [req.user.name, to, message]);
     res.status(201).json({ success: true, message: "Message sent successfully.", data: result.rows[0] });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -401,15 +440,8 @@ app.get("/api/notifications", requireAuth, requireAdmin, async (req, res) => {
 app.post("/api/notifications", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { recipient, subject, message } = req.body;
-    if (!recipient || !subject || !message) {
-      return res.status(400).json({ success: false, message: "Recipient, subject, and message are required." });
-    }
-
-    const result = await query(
-      `INSERT INTO notifications (type, recipient, subject, message, status) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      ["email", recipient, subject, message, "queued"]
-    );
-
+    if (!recipient || !subject || !message) return res.status(400).json({ success: false, message: "Recipient, subject, and message are required." });
+    const result = await query(`INSERT INTO notifications (type, recipient, subject, message, status) VALUES ($1, $2, $3, $4, $5) RETURNING *`, ["email", recipient, subject, message, "queued"]);
     res.status(201).json({ success: true, message: "Email notification queued successfully.", data: result.rows[0] });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -420,6 +452,17 @@ app.use((req, res) => {
   res.status(404).json({ success: false, message: "Route not found." });
 });
 
-app.listen(PORT, () => {
-  console.log(`School backend API running on port ${PORT}`);
-});
+const startServer = async () => {
+  try {
+    await initializeDatabase();
+    console.log("Database tables are ready.");
+    app.listen(PORT, () => {
+      console.log(`School backend API running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("Database initialization failed:", error.message);
+    process.exit(1);
+  }
+};
+
+startServer();
