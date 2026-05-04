@@ -110,7 +110,7 @@ app.get("/", (req, res) => {
 app.get("/api/health", async (req, res) => {
   try {
     await query("SELECT 1");
-    res.json({
+    res.status(200).json({
       status: "healthy",
       service: "school-backend-api",
       database: "connected",
@@ -118,7 +118,23 @@ app.get("/api/health", async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    res.status(500).json({ status: "unhealthy", database: "disconnected", message: error.message });
+    res.status(200).json({
+      status: "degraded",
+      service: "school-backend-api",
+      database: "disconnected",
+      auth: "enabled",
+      message: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+app.get("/api/db-health", async (req, res) => {
+  try {
+    await query("SELECT 1");
+    res.json({ success: true, database: "connected", timestamp: new Date().toISOString() });
+  } catch (error) {
+    res.status(500).json({ success: false, database: "disconnected", message: error.message });
   }
 });
 
@@ -136,10 +152,7 @@ app.post("/api/auth/register-admin", async (req, res) => {
 
     const adminCount = await query("SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin'");
     if (adminCount.rows[0].count > 0) {
-      return res.status(403).json({
-        success: false,
-        message: "Admin account already exists. Use login instead.",
-      });
+      return res.status(403).json({ success: false, message: "Admin account already exists. Use login instead." });
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
@@ -253,18 +266,6 @@ app.post("/api/students", requireAuth, requireAdmin, async (req, res) => {
     res.status(201).json({ success: true, message: "Student created successfully.", data: result.rows[0] });
   } catch (error) {
     if (error.code === "23505") return res.status(409).json({ success: false, message: "Student email already exists." });
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-app.get("/api/students/:id", async (req, res) => {
-  try {
-    const studentResult = await query("SELECT * FROM students WHERE id = $1", [req.params.id]);
-    if (!studentResult.rowCount) return res.status(404).json({ success: false, message: "Student not found." });
-
-    const gradesResult = await query("SELECT * FROM grades WHERE student_id = $1 ORDER BY created_at DESC", [req.params.id]);
-    res.json({ success: true, data: { ...studentResult.rows[0], grades: gradesResult.rows } });
-  } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
