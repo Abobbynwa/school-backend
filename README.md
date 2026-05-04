@@ -2,6 +2,20 @@
 
 Backend API for the School Management Portal project. It provides basic REST endpoints for students, staff, grades, and API health checks.
 
+## Connected Frontend
+
+Frontend live URL:
+
+```txt
+https://school-portal-puce.vercel.app
+```
+
+Frontend repository:
+
+```txt
+https://github.com/Abobbynwa/school-portal
+```
+
 ## Live Deployment Target
 
 This backend is designed to deploy on Render, Railway, or any Node.js hosting platform.
@@ -130,7 +144,7 @@ Start Command: npm start
 Environment variables:
 
 ```env
-CLIENT_URL=https://your-frontend-url.vercel.app
+CLIENT_URL=https://school-portal-puce.vercel.app
 ```
 
 Render provides `PORT` automatically, so you do not need to manually set it unless required.
