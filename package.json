@@ -13,7 +13,9 @@
     "express",
     "nodejs",
     "api",
-    "education-technology"
+    "education-technology",
+    "postgresql",
+    "supabase"
   ],
   "author": "Agaba Valentine",
   "license": "MIT",
@@ -22,7 +24,8 @@
     "dotenv": "latest",
     "express": "latest",
     "helmet": "latest",
-    "morgan": "latest"
+    "morgan": "latest",
+    "pg": "latest"
   },
   "devDependencies": {
     "nodemon": "latest"
